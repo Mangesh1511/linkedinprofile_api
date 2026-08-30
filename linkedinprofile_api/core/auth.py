@@ -55,6 +55,33 @@ def extract_session_cookies(session_path: str = "linkedin_session.json") -> Tupl
         raise AuthenticationError(f"Could not read session cookies from {session_path}: {e}")
 
 
+async def ensure_valid_session(session_path: str = "linkedin_session.json") -> Tuple[Dict[str, str], str]:
+    """
+    Ensure a valid linkedin_session.json file exists containing the li_at cookie.
+    If missing, empty, or expired, automatically triggers a Playwright login to regenerate it.
+    """
+    if os.path.exists(session_path):
+        try:
+            return extract_session_cookies(session_path)
+        except AuthenticationError as auth_err:
+            logger.warning(f"Session file '{session_path}' invalid ({auth_err}). Regenerating...")
+    
+    email, password = load_credentials_from_env()
+    if not email or not password:
+        raise AuthenticationError(
+            "Session file missing `li_at` cookie and credentials (LINKEDIN_EMAIL, LINKEDIN_PASSWORD) not set in environment."
+        )
+    
+    from .browser import BrowserManager
+    logger.info("🔑 Regenerating valid `linkedin_session.json` authentication cookies...")
+    async with BrowserManager(headless=True) as browser:
+        page = await browser.context.new_page()
+        await login_with_credentials(page, email=email, password=password)
+        await browser.save_session(session_path)
+    
+    return extract_session_cookies(session_path)
+
+
 async def is_logged_in(page: Page) -> bool:
     """Check if currently logged into LinkedIn in browser context."""
     try:

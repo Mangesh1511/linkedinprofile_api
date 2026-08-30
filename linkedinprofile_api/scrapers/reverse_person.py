@@ -16,7 +16,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ..models import Person, Experience, Education, Accomplishment, Interest, Contact
-from ..core.auth import extract_session_cookies
+from ..core.auth import extract_session_cookies, ensure_valid_session
 from ..core.exceptions import ScrapingError, AuthenticationError, RateLimitError
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class ReverseEngineeredScraper:
         canonical_url = f"https://www.linkedin.com/in/{slug}/"
         logger.info(f"⚡ Reverse-Engineered HTTP Scrape starting for slug: '{slug}'...")
 
-        cookie_dict, csrf_token = extract_session_cookies(self.session_path)
+        cookie_dict, csrf_token = await ensure_valid_session(self.session_path)
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
