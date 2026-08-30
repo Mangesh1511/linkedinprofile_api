@@ -1,0 +1,13 @@
+.env
+linkedin_session.json
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+api_server.log
+tests/
+.pytest_cache/

@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  linkedinprofile_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: linkedinprofile_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./linkedin_session.json:/app/linkedin_session.json
+      - ./api_server.log:/app/api_server.log
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
