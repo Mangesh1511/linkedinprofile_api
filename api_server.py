@@ -13,7 +13,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Header, Depends, status
+from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -41,27 +41,6 @@ logging.basicConfig(
 logger = logging.getLogger("api_server")
 
 SESSION_FILE = "linkedin_session.json"
-
-
-async def verify_api_key(
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    apiKey: Optional[str] = Query(None, description="API Key for authentication")
-):
-    """
-    Security dependency to protect public API endpoints against unauthorized access.
-    If API_KEY is set in environment, requests must provide matching X-API-Key header or apiKey query param.
-    """
-    expected_key = os.getenv("API_KEY")
-    if not expected_key or expected_key == "replace_with_a_long_random_value":
-        return  # Open access mode if API_KEY is not set
-    
-    provided_key = x_api_key or apiKey
-    if provided_key != expected_key:
-        logger.warning(f"Unauthorized API request attempt with key: '{provided_key}'")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key. Pass 'X-API-Key' header or 'apiKey' query parameter."
-        )
 
 
 @asynccontextmanager
@@ -107,14 +86,14 @@ async def health_check():
     }
 
 
-@app.get("/api/profileinfo", dependencies=[Depends(verify_api_key)])
+@app.get("/api/profileinfo")
 async def get_profile_info(
     profileUrl: str = Query(..., description="LinkedIn profile URL to scrape (e.g. https://www.linkedin.com/in/williamhgates/)")
 ):
     """
     Scrape a LinkedIn person profile by URL using direct reverse-engineered HTTP endpoints (Voyager API).
     
-    Sub-second response time (~150ms) with zero browser execution overhead. Protected by API Key authentication.
+    Sub-second response time (~150ms) with zero browser execution overhead.
     """
     try:
         scraper = ReverseEngineeredScraper(session_path=SESSION_FILE)

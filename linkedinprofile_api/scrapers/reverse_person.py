@@ -61,10 +61,18 @@ class ReverseEngineeredScraper:
             "csrf-token": csrf_token,
             "x-restli-protocol-version": "2.0.0",
             "x-li-lang": "en_US",
+            "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
         }
 
+        proxy_url = os.getenv("PROXY_URL")
+
         try:
-            async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as client:
+            async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0, proxy=proxy_url) as client:
                 # Step 1: Call Voyager Dash Profile API endpoint
                 voyager_url = f"https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity={slug}"
                 positions_url = f"https://www.linkedin.com/voyager/api/identity/profiles/{slug}/positionGroups"

@@ -38,7 +38,6 @@ def extract_session_cookies(session_path: str = "linkedin_session.json") -> Tupl
             "li_at": env_li_at.strip(),
             "JSESSIONID": f'"{env_jsessionid}"',
         }
-        _persist_session_if_missing(session_path, cookie_dict)
         return cookie_dict, env_jsessionid
 
     # Priority 2: Base64 session string in environment
