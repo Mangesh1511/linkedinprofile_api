@@ -1,5 +1,5 @@
-# Use official Microsoft Playwright Python image for startup authentication support
-FROM mcr.microsoft.com/playwright/python:v1.45.0-jammy
+# Lightweight Python 3.11 image (Pure HTTP - No Playwright/Chromium required)
+FROM python:3.11-slim
 
 WORKDIR /app
 

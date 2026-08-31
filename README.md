@@ -1,6 +1,6 @@
 # Reverse-Engineered LinkedIn Profile REST API (`linkedinprofile_api`)
 
-A high-performance, reverse-engineered REST API for extracting LinkedIn person profiles by directly querying LinkedIn's internal backend endpoints (**Voyager RESTli API**) with **zero browser overhead during request execution**.
+A high-performance, 100% pure HTTP REST API for extracting LinkedIn person profiles by directly querying LinkedIn's internal backend endpoints (**Voyager RESTli API**) with **zero browser or Chromium overhead**.
 
 ---
 
@@ -8,14 +8,12 @@ A high-performance, reverse-engineered REST API for extracting LinkedIn person p
 
 ```mermaid
 flowchart TD
-    subgraph Server Startup [One-Time Authentication Phase]
-        Startup[api_server.py Startup] --> Check[Check linkedin_session.json]
-        Check -->|Missing| PW[Playwright Automated Headless Login]
-        PW -->|Save Storage State| Session[Save linkedin_session.json]
-        Check -->|Exists| Session
+    subgraph Environment & Session Init [Zero-Browser Startup]
+        Startup[api_server.py Startup] --> ReadEnv[Read LI_AT / JSESSIONID Env Vars or linkedin_session.json]
+        ReadEnv -->|Persist Cookies| Session[linkedin_session.json]
     end
 
-    subgraph API Request Flow [Zero-Browser Sub-Second Execution]
+    subgraph API Request Flow [Pure HTTP Sub-Second Execution]
         Client[Client / HTTP Request] -->|GET /api/profileinfo| API[FastAPI Server Endpoint]
         API -->|Load Cookies li_at & JSESSIONID| Engine[ReverseEngineeredScraper]
         Engine -->|HTTP GET + CSRF Header| Voyager[LinkedIn Voyager RESTli API]
@@ -28,10 +26,9 @@ flowchart TD
 
 ## 🚀 Key Highlights
 
-- **Pure Reverse-Engineered Solution**: Directly queries LinkedIn's internal backend endpoints (`/voyager/api/identity/...`) using lightweight `httpx` HTTP requests.
-- **Zero Browser Overhead During Request Handling**: No Playwright, Puppeteer, or Chromium browser execution when handling client requests.
-- **Sub-Second Performance**: Profile extraction completes in **100ms – 300ms** (up to 50x faster than headless browser automation).
-- **Automated Startup Authentication**: Automatically logs in once at server startup via Playwright if `linkedin_session.json` is missing, then closes the browser.
+- **100% Pure HTTP Stack**: Built with `httpx` and `fastapi` — **Zero Playwright, Puppeteer, or Chromium** installed or running inside your app container.
+- **Ultra Lightweight Container**: Uses `python:3.11-slim` (~50MB image size, compared to ~1.5GB for browser automation containers).
+- **Pure Reverse-Engineered Solution**: Directly queries LinkedIn's internal backend endpoints (`/voyager/api/identity/...`) with sub-second execution (~150ms).
 - **Clean Data Schema**: Parses responses into validated Pydantic `Person` schemas containing Name, Headline, Location, Experiences, Education, and About summary bio.
 - **Detailed API Reference**: See [VOYAGER_API_REFERENCE.md](file:///Users/mangeshpatil/repos/linkedinprofile_api/VOYAGER_API_REFERENCE.md) for endpoint URLs, RESTli headers, and JSON response schemas.
 

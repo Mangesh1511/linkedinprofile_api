@@ -63,48 +63,56 @@ class ReverseEngineeredScraper:
             "x-li-lang": "en_US",
         }
 
-        async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as client:
-            # Step 1: Call Voyager Dash Profile API endpoint
-            voyager_url = f"https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity={slug}"
-            positions_url = f"https://www.linkedin.com/voyager/api/identity/profiles/{slug}/positionGroups"
-            
-            logger.info(f"📡 Requesting Voyager API endpoint: {voyager_url}")
-            
-            dash_res = await client.get(voyager_url)
-            
-            # Check for token expiration (401 / 403) and auto-refresh session once
-            if dash_res.status_code in (401, 403):
-                logger.warning(f"⚠️ Voyager API returned HTTP {dash_res.status_code} (Session token expired/invalid). Force refreshing session cookies...")
-                try:
-                    cookie_dict, csrf_token = await ensure_valid_session(self.session_path, force_refresh=True)
-                    headers["csrf-token"] = csrf_token
-                    async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as retry_client:
-                        dash_res = await retry_client.get(voyager_url)
-                        pos_res = await retry_client.get(positions_url)
-                except Exception as refresh_err:
-                    logger.error(f"❌ Session auto-refresh failed: {refresh_err}")
-                    raise AuthenticationError(f"LinkedIn session expired and automated refresh failed: {refresh_err}")
+        try:
+            async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as client:
+                # Step 1: Call Voyager Dash Profile API endpoint
+                voyager_url = f"https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity={slug}"
+                positions_url = f"https://www.linkedin.com/voyager/api/identity/profiles/{slug}/positionGroups"
+                
+                logger.info(f"📡 Requesting Voyager API endpoint: {voyager_url}")
+                
+                dash_res = await client.get(voyager_url)
+                
+                # Check for token expiration (401 / 403) and auto-refresh session once
+                if dash_res.status_code in (401, 403):
+                    logger.warning(f"⚠️ Voyager API returned HTTP {dash_res.status_code} (Session token expired/invalid). Force refreshing session cookies...")
+                    try:
+                        cookie_dict, csrf_token = await ensure_valid_session(self.session_path, force_refresh=True)
+                        headers["csrf-token"] = csrf_token
+                        async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as retry_client:
+                            dash_res = await retry_client.get(voyager_url)
+                            pos_res = await retry_client.get(positions_url)
+                    except Exception as refresh_err:
+                        logger.error(f"❌ Session auto-refresh failed: {refresh_err}")
+                        raise AuthenticationError(f"LinkedIn session expired and automated refresh failed: {refresh_err}")
 
-            if dash_res.status_code in (401, 403):
-                raise AuthenticationError(f"LinkedIn session expired or unauthorized (Status {dash_res.status_code}).")
-            elif dash_res.status_code == 429:
-                raise RateLimitError("LinkedIn rate limit encountered.")
+                if dash_res.status_code in (401, 403):
+                    raise AuthenticationError(f"LinkedIn session expired or unauthorized (Status {dash_res.status_code}).")
+                elif dash_res.status_code == 429:
+                    raise RateLimitError("LinkedIn rate limit encountered.")
 
-            pos_res = await client.get(positions_url)
+                pos_res = await client.get(positions_url)
 
-            # Check if Voyager Dash API returned 200 OK
-            if dash_res.status_code == 200:
-                data = dash_res.json()
-                pos_data = pos_res.json() if pos_res.status_code == 200 else {}
-                return self._parse_voyager_json(canonical_url, data, pos_data)
-            
-            # Step 2: Fallback to Direct HTML SSR Parsing
-            logger.info("ℹ️ Voyager API returned fallback code; hitting direct HTML profile endpoint...")
-            html_res = await client.get(canonical_url)
-            if html_res.status_code == 200:
-                return self._parse_html_ssr(canonical_url, html_res.text)
-            else:
-                raise ScrapingError(f"Direct profile HTTP fetch failed with status code {html_res.status_code}.")
+                # Check if Voyager Dash API returned 200 OK
+                if dash_res.status_code == 200:
+                    data = dash_res.json()
+                    pos_data = pos_res.json() if pos_res.status_code == 200 else {}
+                    return self._parse_voyager_json(canonical_url, data, pos_data)
+                
+                # Step 2: Fallback to Direct HTML SSR Parsing
+                logger.info("ℹ️ Voyager API returned fallback code; hitting direct HTML profile endpoint...")
+                html_res = await client.get(canonical_url)
+                if html_res.status_code == 200:
+                    return self._parse_html_ssr(canonical_url, html_res.text)
+                else:
+                    raise ScrapingError(f"Direct profile HTTP fetch failed with status code {html_res.status_code}.")
+
+        except httpx.TooManyRedirects:
+            logger.error("❌ LinkedIn redirected to authwall/login loop. Session cookie `li_at` is expired or invalid.")
+            raise AuthenticationError("LinkedIn session cookie (`li_at`) is expired or invalid. Please update the `LI_AT` environment variable.")
+        except httpx.HTTPError as http_err:
+            logger.error(f"❌ HTTP transport error: {http_err}")
+            raise ScrapingError(f"Network error while connecting to LinkedIn: {http_err}")
 
     def _parse_voyager_json(self, linkedin_url: str, dash_data: Dict[str, Any], pos_data: Dict[str, Any]) -> Person:
         """Parse structured JSON returned by LinkedIn Voyager API."""
@@ -160,7 +168,12 @@ class ReverseEngineeredScraper:
     def _parse_html_ssr(self, linkedin_url: str, html: str) -> Person:
         """Fallback HTML SSR parser using BeautifulSoup."""
         soup = BeautifulSoup(html, "lxml")
-        name = soup.title.string.replace("| LinkedIn", "").strip() if soup.title else "Unknown"
+        raw_title = soup.title.string.replace("| LinkedIn", "").strip() if soup.title else "Unknown"
+
+        # Detect logged-out or authwall signup page titles
+        if any(bad in raw_title.lower() for bad in ["join linkedin", "linked in", "linkedin", "sign in", "log in"]):
+            logger.error(f"❌ Received logged-out LinkedIn page title: '{raw_title}'. Session cookie `li_at` is invalid or expired.")
+            raise AuthenticationError("LinkedIn session cookie (`li_at`) is expired or invalid. Please update the `LI_AT` environment variable.")
 
         headline = None
         for el in soup.find_all(["p", "span", "h2"]):
@@ -172,6 +185,6 @@ class ReverseEngineeredScraper:
 
         return Person(
             linkedin_url=linkedin_url,
-            name=name,
+            name=raw_title,
             headline=headline,
         )

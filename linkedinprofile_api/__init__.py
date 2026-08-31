@@ -1,10 +1,10 @@
 """
-Reverse-Engineered LinkedIn Profile API Package.
+Reverse-Engineered LinkedIn Profile REST API Package.
 """
 
 from .models import Person, Experience, Education, Accomplishment, Interest, Contact
 from .scrapers import ReverseEngineeredScraper
-from .core import BrowserManager, extract_session_cookies, login_with_credentials, ScrapingError, AuthenticationError
+from .core import extract_session_cookies, ensure_valid_session, ScrapingError, AuthenticationError
 
 __version__ = "1.0.0"
 
@@ -16,9 +16,8 @@ __all__ = [
     'Interest',
     'Contact',
     'ReverseEngineeredScraper',
-    'BrowserManager',
     'extract_session_cookies',
-    'login_with_credentials',
+    'ensure_valid_session',
     'ScrapingError',
     'AuthenticationError',
 ]
