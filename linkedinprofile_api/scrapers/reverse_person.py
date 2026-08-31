@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 
 from ..models import Person, Experience, Education, Accomplishment, Interest, Contact
 from ..core.auth import extract_session_cookies, ensure_valid_session
-from ..core.exceptions import ScrapingError, AuthenticationError, RateLimitError
+from ..core.exceptions import ScrapingError, AuthenticationError, RateLimitError, ProfileNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,22 @@ class ReverseEngineeredScraper:
                 
                 dash_res = await client.get(voyager_url)
                 
+                # Check if profile is not found (404)
+                if dash_res.status_code == 404:
+                    raise ProfileNotFoundError(f"LinkedIn profile '{slug}' does not exist (HTTP 404).")
+
+                # Check if LinkedIn returns 403 because profile cannot be accessed / doesn't exist
+                if dash_res.status_code == 403:
+                    try:
+                        err_data = dash_res.json()
+                        err_msg = str(err_data.get("message", "")).lower()
+                        if "can't be accessed" in err_msg or "not found" in err_msg or "cannot be found" in err_msg or "doesn't exist" in err_msg:
+                            raise ProfileNotFoundError(f"LinkedIn profile '{slug}' does not exist or cannot be accessed.")
+                    except ProfileNotFoundError:
+                        raise
+                    except Exception:
+                        pass
+
                 # Check for token expiration (401 / 403) and auto-refresh session once
                 if dash_res.status_code in (401, 403):
                     logger.warning(f"⚠️ Voyager API returned HTTP {dash_res.status_code} (Session token expired/invalid). Force refreshing session cookies...")
@@ -90,12 +106,27 @@ class ReverseEngineeredScraper:
                         async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as retry_client:
                             dash_res = await retry_client.get(voyager_url)
                             pos_res = await retry_client.get(positions_url)
+                    except ProfileNotFoundError:
+                        raise
                     except Exception as refresh_err:
                         logger.error(f"❌ Session auto-refresh failed: {refresh_err}")
                         raise AuthenticationError(f"LinkedIn session expired and automated refresh failed: {refresh_err}")
 
-                if dash_res.status_code in (401, 403):
+                if dash_res.status_code == 404:
+                    raise ProfileNotFoundError(f"LinkedIn profile '{slug}' does not exist (HTTP 404).")
+                elif dash_res.status_code == 403:
+                    try:
+                        err_data = dash_res.json()
+                        err_msg = str(err_data.get("message", "")).lower()
+                        if "can't be accessed" in err_msg or "not found" in err_msg or "cannot be found" in err_msg or "doesn't exist" in err_msg:
+                            raise ProfileNotFoundError(f"LinkedIn profile '{slug}' does not exist or cannot be accessed.")
+                    except ProfileNotFoundError:
+                        raise
+                    except Exception:
+                        pass
                     raise AuthenticationError(f"LinkedIn session expired or unauthorized (Status {dash_res.status_code}).")
+                elif dash_res.status_code == 401:
+                    raise AuthenticationError(f"LinkedIn session expired or unauthorized (Status 401).")
                 elif dash_res.status_code == 429:
                     raise RateLimitError("LinkedIn rate limit encountered.")
 
@@ -105,13 +136,15 @@ class ReverseEngineeredScraper:
                 if dash_res.status_code == 200:
                     data = dash_res.json()
                     pos_data = pos_res.json() if pos_res.status_code == 200 else {}
-                    return self._parse_voyager_json(canonical_url, data, pos_data)
+                    return self._parse_voyager_json(canonical_url, slug, data, pos_data)
                 
                 # Step 2: Fallback to Direct HTML SSR Parsing
                 logger.info("ℹ️ Voyager API returned fallback code; hitting direct HTML profile endpoint...")
                 html_res = await client.get(canonical_url)
-                if html_res.status_code == 200:
-                    return self._parse_html_ssr(canonical_url, html_res.text)
+                if html_res.status_code == 404:
+                    raise ProfileNotFoundError(f"LinkedIn profile '{slug}' does not exist (HTTP 404).")
+                elif html_res.status_code == 200:
+                    return self._parse_html_ssr(canonical_url, slug, html_res.text)
                 else:
                     raise ScrapingError(f"Direct profile HTTP fetch failed with status code {html_res.status_code}.")
 
@@ -122,11 +155,11 @@ class ReverseEngineeredScraper:
             logger.error(f"❌ HTTP transport error: {http_err}")
             raise ScrapingError(f"Network error while connecting to LinkedIn: {http_err}")
 
-    def _parse_voyager_json(self, linkedin_url: str, dash_data: Dict[str, Any], pos_data: Dict[str, Any]) -> Person:
+    def _parse_voyager_json(self, linkedin_url: str, slug: str, dash_data: Dict[str, Any], pos_data: Dict[str, Any]) -> Person:
         """Parse structured JSON returned by LinkedIn Voyager API."""
         elements = dash_data.get("elements", [])
         if not elements:
-            raise ScrapingError("No profile elements found in Voyager API JSON response.")
+            raise ProfileNotFoundError(f"LinkedIn profile '{slug}' not found.")
 
         p_data = elements[0]
         first_name = p_data.get("multiLocaleFirstName", {}).get("en_US") or p_data.get("firstName", "")
@@ -173,13 +206,18 @@ class ReverseEngineeredScraper:
             experiences=experiences,
         )
 
-    def _parse_html_ssr(self, linkedin_url: str, html: str) -> Person:
+    def _parse_html_ssr(self, linkedin_url: str, slug: str, html: str) -> Person:
         """Fallback HTML SSR parser using BeautifulSoup."""
         soup = BeautifulSoup(html, "lxml")
         raw_title = soup.title.string.replace("| LinkedIn", "").strip() if soup.title else "Unknown"
+        page_text = soup.get_text().lower()
+
+        # Detect non-existent profile pages
+        if "this page doesn’t exist" in page_text or "this page doesn't exist" in page_text or "page not found" in page_text or "profile not found" in raw_title.lower():
+            raise ProfileNotFoundError(f"LinkedIn profile '{slug}' does not exist (HTTP 404).")
 
         # Detect logged-out or authwall signup page titles
-        if any(bad in raw_title.lower() for bad in ["join linkedin", "linked in", "linkedin", "sign in", "log in"]):
+        if any(bad in raw_title.lower() for bad in ["join linkedin", "linked in", "sign in", "log in"]):
             logger.error(f"❌ Received logged-out LinkedIn page title: '{raw_title}'. Session cookie `li_at` is invalid or expired.")
             raise AuthenticationError("LinkedIn session cookie (`li_at`) is expired or invalid. Please update the `LI_AT` environment variable.")
 

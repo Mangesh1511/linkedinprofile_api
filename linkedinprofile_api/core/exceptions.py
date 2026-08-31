@@ -21,3 +21,9 @@ class RateLimitError(ScrapingError):
 class ElementNotFoundError(ScrapingError):
     """Raised when required profile elements or Voyager endpoints are missing."""
     pass
+
+
+class ProfileNotFoundError(ScrapingError):
+    """Raised when the requested LinkedIn profile does not exist (404)."""
+    pass
+

@@ -30,6 +30,9 @@ def extract_session_cookies(session_path: str = "linkedin_session.json") -> Tupl
     Returns:
         Tuple of (cookie_dict, csrf_token_string)
     """
+    load_dotenv()
+    load_dotenv(".env.example")
+    
     # Priority 1: Direct LI_AT environment variable (Best for cloud deployment & server startup)
     env_li_at = os.getenv("LI_AT")
     if env_li_at:

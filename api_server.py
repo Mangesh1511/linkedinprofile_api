@@ -27,6 +27,7 @@ from linkedinprofile_api.core.exceptions import (
     AuthenticationError,
     RateLimitError,
     ScrapingError,
+    ProfileNotFoundError,
 )
 
 # Configure logging
@@ -102,6 +103,12 @@ async def get_profile_info(
             "status": "success",
             "data": person.to_dict(),
         }
+    except ProfileNotFoundError as e:
+        logger.warning(f"Profile not found: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
     except RateLimitError as e:
         logger.error(f"Rate limit error: {e}")
         raise HTTPException(
