@@ -71,13 +71,26 @@ class ReverseEngineeredScraper:
             logger.info(f"📡 Requesting Voyager API endpoint: {voyager_url}")
             
             dash_res = await client.get(voyager_url)
-            pos_res = await client.get(positions_url)
+            
+            # Check for token expiration (401 / 403) and auto-refresh session once
+            if dash_res.status_code in (401, 403):
+                logger.warning(f"⚠️ Voyager API returned HTTP {dash_res.status_code} (Session token expired/invalid). Force refreshing session cookies...")
+                try:
+                    cookie_dict, csrf_token = await ensure_valid_session(self.session_path, force_refresh=True)
+                    headers["csrf-token"] = csrf_token
+                    async with httpx.AsyncClient(headers=headers, cookies=cookie_dict, follow_redirects=True, timeout=15.0) as retry_client:
+                        dash_res = await retry_client.get(voyager_url)
+                        pos_res = await retry_client.get(positions_url)
+                except Exception as refresh_err:
+                    logger.error(f"❌ Session auto-refresh failed: {refresh_err}")
+                    raise AuthenticationError(f"LinkedIn session expired and automated refresh failed: {refresh_err}")
 
-            # Fail fast if rate limited or unauthenticated
             if dash_res.status_code in (401, 403):
                 raise AuthenticationError(f"LinkedIn session expired or unauthorized (Status {dash_res.status_code}).")
             elif dash_res.status_code == 429:
                 raise RateLimitError("LinkedIn rate limit encountered.")
+
+            pos_res = await client.get(positions_url)
 
             # Check if Voyager Dash API returned 200 OK
             if dash_res.status_code == 200:

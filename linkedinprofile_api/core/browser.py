@@ -40,13 +40,20 @@ class BrowserManager:
         logger.info("✓ Playwright BrowserManager started successfully")
 
     async def save_session(self, filepath: str = "linkedin_session.json") -> None:
-        """Save storage state (cookies) to file."""
+        """Save storage state (cookies) to file with diagnostic logging."""
         if not self.context:
             raise RuntimeError("Browser context is not initialized.")
         state = await self.context.storage_state()
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
-        logger.info(f"💾 Saved session cookies to: {filepath}")
+        
+        cookie_names = [c.get("name") for c in state.get("cookies", []) if "linkedin.com" in c.get("domain", "")]
+        has_li_at = "li_at" in cookie_names
+        
+        if has_li_at:
+            logger.info(f"💾 Saved {len(cookie_names)} LinkedIn session cookies to '{filepath}' (✓ 'li_at' cookie verified: {cookie_names})")
+        else:
+            logger.warning(f"⚠️ Saved session file '{filepath}', BUT 'li_at' cookie was MISSING! Extracted cookies: {cookie_names}")
 
     async def close(self) -> None:
         """Close browser and stop Playwright."""
