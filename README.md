@@ -16,6 +16,13 @@ A high-performance, 100% pure HTTP REST API for extracting LinkedIn person profi
 
 ---
 
+## 🎬 Video Demonstrations & Presentation
+
+- 📺 **Overview & System Architecture**: [Watch Loom Video](https://www.loom.com/share/e530c61e611f4741b03aecd74c8bc1d5)
+- 💡 **Limitations, Edge Cases & Learnings**: [Watch Loom Video](https://www.loom.com/share/d397b129952845e7a2e9636d41bbc810)
+
+---
+
 ## 🏛️ System Architecture
 
 ```mermaid
