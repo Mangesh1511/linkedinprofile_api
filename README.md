@@ -20,27 +20,23 @@ A high-performance, 100% pure HTTP REST API for extracting LinkedIn person profi
 
 ```mermaid
 flowchart TD
-    subgraph Client Request
-        Client[HTTP Client / Browser / cURL] -->|GET /api/profileinfo?profileUrl=...| Server[FastAPI Server api_server.py]
+    Client(["🌐 Public Client (Browser / cURL / Frontend)"]) -->|1. GET /api/profileinfo?profileUrl=...| Server["⚡ FastAPI Server (api_server.py)"]
+    
+    subgraph FastAPI Public API Layer
+        Server -->|2. Forward Request - 100% Public & Open| Scraper["ReverseEngineeredScraper (scrapers/reverse_person.py)"]
     end
 
-    subgraph Authentication & Middleware
-        Server --> CORS[CORS Middleware]
-        CORS --> Session[ensure_valid_session core/auth.py]
-        Session -->|Read LI_AT & JSESSIONID| CookieStore[Environment / .env]
+    subgraph Reverse-Engineered Voyager Engine
+        Scraper -->|Attach Server's Saved li_at Session| LinkedIn["LinkedIn Voyager RESTli Microservices"]
+        LinkedIn -->|Call A| DashAPI["/voyager/api/identity/dash/profiles (Top Card Bio)"]
+        LinkedIn -->|Call B| PosAPI["/voyager/api/identity/profiles/.../positionGroups (Work History)"]
+        DashAPI -->|Raw JSON| Scraper
+        PosAPI -->|Raw JSON| Scraper
     end
 
-    subgraph Reverse-Engineered HTTP Engine
-        Session --> Scraper[ReverseEngineeredScraper scrapers/reverse_person.py]
-        Scraper -->|1. GET /voyager/api/identity/dash/profiles| DashAPI[LinkedIn Dash Profile API]
-        Scraper -->|2. GET /voyager/api/identity/profiles/.../positionGroups| PosAPI[LinkedIn Position Groups API]
-        DashAPI -->|Return JSON| Scraper
-        PosAPI -->|Return JSON| Scraper
-    end
-
-    subgraph Schema Deserialization & Response
-        Scraper -->|Parse JSON to Pydantic| Models[Person / Experience Models models/person.py]
-        Models -->|HTTP 200 OK| Client
+    subgraph Data Serialization & Output
+        Scraper -->|3. Clean & Validate| Models["Pydantic Models (Person / Experience)"]
+        Models -->|4. Structured JSON in ~150ms| Client
     end
 ```
 
